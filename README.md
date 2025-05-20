@@ -2,6 +2,8 @@
 
 ---
 
+[Russian version](https://github.com/Ave-Sergeev/Morph/blob/main/README.ru.md)
+
 ### Description
 
 ...

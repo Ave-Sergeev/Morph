@@ -1,0 +1,10 @@
+# Server
+server:
+  host: 0.0.0.0
+  port: 9090
+# Logging
+logging:
+  log_level: INFO
+# TitanSettings
+embedding:
+  model_path: "./model/model.onnx"

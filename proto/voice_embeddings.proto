@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package voice_embeddings;
+
+service Embedding {
+  rpc EmbedVoice(VoiceEmbeddingRequest) returns (VoiceEmbeddingResponse) {}
+}
+
+message VoiceEmbeddingRequest {
+  string id = 1;                          // Request ID
+  bytes content = 2;                      // Audio as a byte array
+}
+
+message VoiceEmbeddingResponse {
+  string id = 1;                          // Request ID (same as in the request)
+  repeated float embeddings = 2;          // Embedding vector (dimension 192)
+}
