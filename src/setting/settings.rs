@@ -16,15 +16,15 @@ pub struct Logging {
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
-pub struct EmbeddingSettings {
-    pub model_path: String,
+pub struct ModelSettings {
+    pub path: String,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct Settings {
     pub server: Server,
     pub logging: Logging,
-    pub embedding: EmbeddingSettings,
+    pub model: ModelSettings,
 }
 
 impl Settings {

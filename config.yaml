@@ -5,6 +5,6 @@ server:
 # Logging
 logging:
   log_level: INFO
-# TitanSettings
-embedding:
-  model_path: "./model/model.onnx"
+# ModelSettings
+model:
+  path: "./model/model.onnx"

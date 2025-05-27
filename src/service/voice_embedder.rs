@@ -1,7 +1,7 @@
 use anyhow::{Error, Result};
 use hound::{SampleFormat, WavReader};
-use ndarray::{Array1, Array3};
-use num_complex::Complex;
+use ndarray::{Array1, Array2, Array3};
+use num_complex::{Complex, ComplexFloat};
 use ort::session::Session;
 use ort::session::builder::GraphOptimizationLevel;
 use rustfft::FftPlanner;
@@ -28,22 +28,18 @@ impl VoiceEmbedder {
             .map(|item| (*item as f32) / f32::from(i16::MAX))
             .collect::<Vec<_>>();
 
-        // Длина фрейма 0,025 шаг 0,01 сек (при sample_rate 16000Гц)
-        let window_length = 400;
-        let frame_length = 400;
-        let frame_step = 160;
-        let fft_size = 158;
+        let spectrogram = Self::compute_spectrogram(&data);
 
-        let spectrogram = Self::compute_spectrogram(&data, frame_length, frame_step, fft_size, window_length);
+        let time = spectrogram.len();
+        let frequency = spectrogram[0].len();
+        println!("time: {}", time);
+        println!("frequency: {}", frequency);
 
-        let time = spectrogram[0].len();
-        let frequency = spectrogram[1].len();
-
-        let input_array = Array3::from_shape_fn((1, time, frequency), |(_, i, j)| spectrogram[i][j]);
+        let input_array = Array3::from_shape_fn((1, frequency, time), |(_, i, j)| spectrogram[j][i]);
 
         let inputs = ort::inputs! {
-            "audio_signal" => input_array.clone(),
-            "length" => Array1::<i64>::from_iter([input_array.shape()[0] as i64]),
+            "audio_signal" => input_array.view(),
+            "length" => Array1::<i64>::from_iter([time as i64]),
         }?;
 
         let outputs = self.session.run(inputs)?;
@@ -59,13 +55,16 @@ impl VoiceEmbedder {
     }
 
     /// Spectrogram calculation using FFT
-    fn compute_spectrogram(
-        audio: &[f32],
-        frame_length: usize,
-        frame_step: usize,
-        fft_size: usize,
-        window_length: usize,
-    ) -> Vec<Vec<f32>> {
+    fn compute_spectrogram(audio: &[f32]) -> Vec<Vec<f32>> {
+        let sample_rate = 16000;
+        let window_length = 400;
+        let frame_length = 400;
+        let frame_step = 160;
+        let fft_size = 512;
+        let n_mels = 80;
+        let f_min = 0.0;
+        let f_max = (sample_rate / 2) as f32;
+
         let frames = Self::split_into_frames(audio, frame_length, frame_step);
 
         let hann_window: Vec<f32> = Self::create_hann_window(window_length);
@@ -80,20 +79,88 @@ impl VoiceEmbedder {
 
             windowed_frame.resize(fft_size, 0.0);
 
-            let mut buffer: Vec<Complex<f32>> = windowed_frame.into_iter().map(|x| Complex::new(x, 0.0)).collect();
+            let mut buffer: Vec<Complex<f32>> =
+                windowed_frame.into_iter().map(|elem| Complex::new(elem, 0.0)).collect();
 
             fft.process(&mut buffer);
 
-            let magnitudes: Vec<f32> = buffer
+            let power_spectrum: Vec<f32> = buffer
                 .iter()
                 .take(fft_size / 2 + 1)
-                .map(|complex| complex.norm_sqr())
+                .map(|complex| complex.abs())
                 .collect();
 
-            spectrogram.push(magnitudes);
+            let mel_filterbank = Self::create_mel_filterbank(sample_rate, fft_size, n_mels, f_min, f_max);
+
+            let mut mel_spectrum = Vec::with_capacity(n_mels);
+
+            for m in 0..n_mels {
+                let mel_energy: f32 = mel_filterbank
+                    .row(m)
+                    .iter()
+                    .zip(&power_spectrum)
+                    .map(|(&f, &p)| f * p)
+                    .sum();
+                mel_spectrum.push(mel_energy);
+            }
+
+            let mel_spectrum_db: Vec<f32> = mel_spectrum.iter().map(|&m| 20.0 * m.max(1e-10).log10()).collect();
+
+            spectrogram.push(mel_spectrum_db);
         }
 
         spectrogram
+    }
+
+    /// Converts frequency to chalk scale
+    fn hz_to_mel(hz: f32) -> f32 {
+        2595.0 * (1.0 + hz / 700.0).log10()
+    }
+
+    /// Converts chalk back to frequency
+    fn mel_to_hz(mel: f32) -> f32 {
+        700.0 * (10f32.powf(mel / 2595.0) - 1.0)
+    }
+
+    /// Constructs a chalk filterbank: the matrix `[n_mels, fft_bins]`
+    fn create_mel_filterbank(sample_rate: usize, n_fft: usize, n_mels: usize, f_min: f32, f_max: f32) -> Array2<f32> {
+        let n_fft_bins = n_fft / 2 + 1;
+        let mut filterbank = Array2::<f32>::zeros((n_mels, n_fft_bins));
+
+        let mel_min = Self::hz_to_mel(f_min);
+        let mel_max = Self::hz_to_mel(f_max);
+        let mel_points: Vec<f32> = (0..(n_mels + 2))
+            .map(|i| mel_min + (i as f32) * (mel_max - mel_min) / (n_mels + 1) as f32)
+            .collect();
+
+        let hz_points: Vec<f32> = mel_points.iter().map(|&m| Self::mel_to_hz(m)).collect();
+        let bin_points: Vec<usize> = hz_points
+            .iter()
+            .map(|&f| ((f / sample_rate as f32) * (n_fft as f32)).floor() as usize)
+            .collect();
+
+        for m in 0..n_mels {
+            let f_left = bin_points[m];
+            let f_center = bin_points[m + 1];
+            let f_right = bin_points[m + 2];
+
+            let left_to_center = (f_center - f_left).max(1) as f32;
+            let center_to_right = (f_right - f_center).max(1) as f32;
+
+            for k in f_left..f_center {
+                if k < n_fft_bins {
+                    filterbank[[m, k]] = (k - f_left) as f32 / left_to_center;
+                }
+            }
+
+            for k in f_center..f_right {
+                if k < n_fft_bins {
+                    filterbank[[m, k]] = (f_right - k) as f32 / center_to_right;
+                }
+            }
+        }
+
+        filterbank
     }
 
     /// Generates a Hann window of the specified length

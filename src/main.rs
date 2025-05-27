@@ -22,7 +22,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     log::info!("Settings:\n{}", settings.json_pretty());
 
-    let voice_embedding_controller = VoiceEmbeddingController::new(&settings.embedding);
+    let voice_embedding_controller = VoiceEmbeddingController::new(&settings.model);
 
     let address = format!("{}:{}", settings.server.host, settings.server.port)
         .parse()
