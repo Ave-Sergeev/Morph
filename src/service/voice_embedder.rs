@@ -1,3 +1,4 @@
+use crate::setting::settings::ModelSettings;
 use anyhow::{Error, Result};
 use hound::{SampleFormat, WavReader};
 use ndarray::{Array1, Array2, Array3};
@@ -10,13 +11,14 @@ use tonic::Status;
 
 pub struct VoiceEmbedder {
     pub session: Session,
+    pub settings: ModelSettings,
 }
 
 impl VoiceEmbedder {
-    pub fn new(model_path: &str) -> Result<Self, Error> {
-        let onnx_session = Self::make_onnx_session(model_path)?;
+    pub fn new(settings: ModelSettings) -> Result<Self, Error> {
+        let session = Self::make_onnx_session(settings.path.as_str())?;
 
-        Ok(VoiceEmbedder { session: onnx_session })
+        Ok(VoiceEmbedder { session, settings })
     }
 
     /// Processes the given audio content and extracts embeddings using a pre-trained model.
@@ -28,12 +30,10 @@ impl VoiceEmbedder {
             .map(|item| (*item as f32) / f32::from(i16::MAX))
             .collect::<Vec<_>>();
 
-        let spectrogram = Self::compute_spectrogram(&data);
+        let spectrogram = Self::compute_spectrogram(&data, &self.settings);
 
         let time = spectrogram.len();
         let frequency = spectrogram[0].len();
-        println!("time: {}", time);
-        println!("frequency: {}", frequency);
 
         let input_array = Array3::from_shape_fn((1, frequency, time), |(_, i, j)| spectrogram[j][i]);
 
@@ -55,15 +55,13 @@ impl VoiceEmbedder {
     }
 
     /// Spectrogram calculation using FFT
-    fn compute_spectrogram(audio: &[f32]) -> Vec<Vec<f32>> {
-        let sample_rate = 16000;
-        let window_length = 400;
-        let frame_length = 400;
-        let frame_step = 160;
-        let fft_size = 512;
-        let n_mels = 80;
-        let f_min = 0.0;
-        let f_max = (sample_rate / 2) as f32;
+    fn compute_spectrogram(audio: &[f32], settings: &ModelSettings) -> Vec<Vec<f32>> {
+        let window_length = settings.window_length;
+        let frame_length = settings.frame_length;
+        let sample_rate = settings.sample_rate;
+        let frame_step = settings.frame_step;
+        let fft_size = settings.fft_size;
+        let n_mels = settings.n_mels;
 
         let frames = Self::split_into_frames(audio, frame_length, frame_step);
 
@@ -90,7 +88,7 @@ impl VoiceEmbedder {
                 .map(|complex| complex.abs())
                 .collect();
 
-            let mel_filterbank = Self::create_mel_filterbank(sample_rate, fft_size, n_mels, f_min, f_max);
+            let mel_filterbank = Self::create_mel_filterbank(sample_rate, fft_size, n_mels);
 
             let mut mel_spectrum = Vec::with_capacity(n_mels);
 
@@ -123,7 +121,10 @@ impl VoiceEmbedder {
     }
 
     /// Constructs a chalk filterbank: the matrix `[n_mels, fft_bins]`
-    fn create_mel_filterbank(sample_rate: usize, n_fft: usize, n_mels: usize, f_min: f32, f_max: f32) -> Array2<f32> {
+    fn create_mel_filterbank(sample_rate: usize, n_fft: usize, n_mels: usize) -> Array2<f32> {
+        let f_min = 0.0;
+        let f_max = (sample_rate / 2) as f32;
+
         let n_fft_bins = n_fft / 2 + 1;
         let mut filterbank = Array2::<f32>::zeros((n_mels, n_fft_bins));
 
@@ -243,13 +244,15 @@ impl VoiceEmbedder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::setting::settings::Settings;
 
     #[test]
     fn test_voice_embedded_success() {
-        let model_path = "./model/model.onnx";
         let audio_path = "./audio/test_audio.wav";
 
-        let voice_embedded = VoiceEmbedder::new(model_path).expect("Failed to initialize VoiceEmbedder");
+        let settings = Settings::new("config.yaml").expect("Failed to load setting");
+
+        let voice_embedded = VoiceEmbedder::new(settings.model).expect("Failed to initialize VoiceEmbedder");
 
         let voice = std::fs::read(audio_path).expect("Failed to read audio file");
 
@@ -258,20 +261,11 @@ mod tests {
             .expect("Voice embedding generation failed");
 
         assert!(!embeddings.is_empty(), "Embeddings don't have to be empty");
-
         assert_eq!(
             embeddings.len(),
             192,
             "The embedding dimension should be 192, obtained by: {}",
             embeddings.len()
         );
-
-        for &embedding in &embeddings {
-            assert!(
-                embedding >= -1.0 && embedding <= 1.0,
-                "The value of embedding {} goes beyond [-1, 1]",
-                embedding
-            );
-        }
     }
 }

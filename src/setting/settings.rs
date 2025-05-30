@@ -18,6 +18,12 @@ pub struct Logging {
 #[derive(Debug, Deserialize, Serialize, Default)]
 pub struct ModelSettings {
     pub path: String,
+    pub sample_rate: usize,
+    pub window_length: usize,
+    pub frame_length: usize,
+    pub frame_step: usize,
+    pub fft_size: usize,
+    pub n_mels: usize,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]

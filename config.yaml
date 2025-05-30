@@ -8,3 +8,9 @@ logging:
 # ModelSettings
 model:
   path: "./model/model.onnx"
+  sample_rate: 16000
+  window_length: 400
+  frame_length: 400
+  frame_step: 160
+  fft_size: 512
+  n_mels: 80

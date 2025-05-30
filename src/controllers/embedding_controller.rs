@@ -11,8 +11,8 @@ pub struct VoiceEmbeddingController {
 }
 
 impl VoiceEmbeddingController {
-    pub fn new(model_settings: &ModelSettings) -> Self {
-        let embedded = VoiceEmbedder::new(&model_settings.path).expect("Failed to initialize model");
+    pub fn new(model_settings: ModelSettings) -> Self {
+        let embedded = VoiceEmbedder::new(model_settings).expect("Failed to initialize model");
 
         Self {
             voice_embedded: Arc::new(embedded),
