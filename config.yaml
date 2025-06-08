@@ -14,3 +14,5 @@ model:
   frame_step: 160
   fft_size: 512
   n_mels: 80
+  ref_value: 1.0
+  amin: 1e-10

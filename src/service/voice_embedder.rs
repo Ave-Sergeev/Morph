@@ -60,8 +60,10 @@ impl VoiceEmbedder {
         let frame_length = settings.frame_length;
         let sample_rate = settings.sample_rate;
         let frame_step = settings.frame_step;
+        let ref_value = settings.ref_value;
         let fft_size = settings.fft_size;
         let n_mels = settings.n_mels;
+        let amin = settings.amin;
 
         let frames = Self::split_into_frames(audio, frame_length, frame_step);
 
@@ -102,12 +104,33 @@ impl VoiceEmbedder {
                 mel_spectrum.push(mel_energy);
             }
 
-            let mel_spectrum_db: Vec<f32> = mel_spectrum.iter().map(|&m| 20.0 * m.max(1e-10).log10()).collect();
+            let mel_spectrum_db = Self::power_to_db(&mel_spectrum, ref_value, amin, Some(80.0));
 
             spectrogram.push(mel_spectrum_db);
         }
 
         spectrogram
+    }
+
+    /// Converts the power spectrum to decibels
+    fn power_to_db(spectrum: &[f32], ref_value: f32, amin: f32, top_db: Option<f32>) -> Vec<f32> {
+        let ref_value = ref_value.max(amin);
+
+        let log_spec: Vec<f32> = spectrum
+            .iter()
+            .map(|&m| {
+                let m_clamped = m.max(amin);
+                10.0 * (m_clamped / ref_value).log10()
+            })
+            .collect();
+
+        if let Some(top_db) = top_db {
+            let max_db = log_spec.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+
+            log_spec.into_iter().map(|db| db.max(max_db - top_db)).collect()
+        } else {
+            log_spec
+        }
     }
 
     /// Converts frequency to chalk scale
@@ -117,7 +140,7 @@ impl VoiceEmbedder {
 
     /// Converts chalk back to frequency
     fn mel_to_hz(mel: f32) -> f32 {
-        700.0 * (10f32.powf(mel / 2595.0) - 1.0)
+        700.0 * (10.0_f32.powf(mel / 2595.0) - 1.0)
     }
 
     /// Constructs a chalk filterbank: the matrix `[n_mels, fft_bins]`

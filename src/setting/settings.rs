@@ -24,6 +24,8 @@ pub struct ModelSettings {
     pub frame_step: usize,
     pub fft_size: usize,
     pub n_mels: usize,
+    pub ref_value: f32,
+    pub amin: f32,
 }
 
 #[derive(Debug, Deserialize, Serialize, Default)]
