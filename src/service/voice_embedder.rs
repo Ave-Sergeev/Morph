@@ -74,6 +74,8 @@ impl VoiceEmbedder {
 
         let mut spectrogram = Vec::with_capacity(frames.len());
 
+        let mel_filterbank = Self::create_mel_filterbank(sample_rate, fft_size, n_mels);
+
         for frame in frames {
             let mut windowed_frame: Vec<f32> = frame.iter().zip(hann_window.iter()).map(|(&s, &w)| s * w).collect();
 
@@ -84,13 +86,12 @@ impl VoiceEmbedder {
 
             fft.process(&mut buffer);
 
+            // TODO: complex.abs() or .norm_sqr()?
             let power_spectrum: Vec<f32> = buffer
                 .iter()
                 .take(fft_size / 2 + 1)
                 .map(|complex| complex.abs())
                 .collect();
-
-            let mel_filterbank = Self::create_mel_filterbank(sample_rate, fft_size, n_mels);
 
             let mut mel_spectrum = Vec::with_capacity(n_mels);
 
@@ -108,6 +109,8 @@ impl VoiceEmbedder {
 
             spectrogram.push(mel_spectrum_db);
         }
+
+        // save_spectrogram(&spectrogram, "./spectrogram.png", Some(sample_rate), Some(fft_size))?;
 
         spectrogram
     }

@@ -11,6 +11,7 @@ mod controllers;
 mod pb;
 mod service;
 mod setting;
+mod utils;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
