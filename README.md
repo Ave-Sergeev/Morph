@@ -12,6 +12,7 @@ It uses an offline model (preloaded), and performs computations on CPU (without 
 
 P.S. If you want to enable support for GPU calculations, you can easily do it by making small changes to the project.
 
+
 ### Models
 
 This service is implemented specifically for the input/output of this model [TitaNet-L](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/nemo/models/titanet_large).
@@ -23,10 +24,21 @@ Then it should be placed in the `/model` directory of the project.
 
 In `config.yaml` you can set the value for the fields:
 
-- `server.host` - host to start gRPC server.
-- `server.port` - port to start gRPC server.
-- `logging.log_level` - logging level of detail.
-- `embedding.model_path` - model path.
+- `Server`
+  - `host` - host to start gRPC server.
+  - `port` - port to start gRPC server.
+- `Logging`
+  - `log_level` - logging level of detail.
+- `ModelSettings`
+  - `path` - model path.
+  - `sample_rate` - sampling frequency (Hz).
+  - `window_length` - size of the analysis window.
+  - `frame_length` - frame size.
+  - `frame_step` - step between frames.
+  - `fft_size` - FFT size (number of points).
+  - `n_mels` - number of mel filters.
+  - `ref_value` - reference value.
+  - `amin` - minimum amplitude value.
 
 ### Usage
 
